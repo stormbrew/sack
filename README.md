@@ -56,6 +56,10 @@ it, etc).
 
 For examples, see the lib/middleware directory.
 
+* obj#initialize(parent, *args)
+  Takes a parent middleware/server and any number of other arguments as
+  appropriate to defining the function of the middleware.
+
 Request Contract
 ----------------
 The request object returned by a server or middleware #wait method must respond
