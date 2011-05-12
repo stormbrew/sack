@@ -15,7 +15,7 @@ module Sack
 
 				def headers(code, headers)
 					@async_response.status = code
-					@async_response.headers.merge(headers)
+					@async_response.headers.merge!(headers)
 					@async_response.send_headers
 					return @async_response
 				end
