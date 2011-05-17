@@ -3,7 +3,7 @@
 require 'sack'
 require 'rack/request'
 require 'sack/middleware/log_url'
-server = Sack.server('thin').new(:Host=>'localhost', :Port =>1025)
+server = Sack.server('simple').new(:Host=>'localhost', :Port =>1025)
 chat_clients = []
 
 Thread.new do
