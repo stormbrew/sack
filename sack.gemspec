@@ -35,6 +35,8 @@ Gem::Specification.new do |s|
   s.require_paths = ["lib"]
   s.rubygems_version = %q{1.3.6}
 
+  s.add_dependency(%q<rack>, ["~> 1"])
+  s.add_dependency(%q<http_parser>)
   s.add_development_dependency(%q<rspec>, ["~> 2.0"])
   s.add_development_dependency(%q<thin>)
   s.add_development_dependency(%q<thin_async>)
