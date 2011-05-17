@@ -3,7 +3,7 @@
 require 'sack'
 require 'rack/request'
 host = 'localhost'
-server = Sack.server('thin').new(:Host=>host, :Port =>1025)
+server = Sack.server('simple').new(:Host=>host, :Port =>1025)
 chat_clients = []
 
 Page = <<DOC
