@@ -7,5 +7,5 @@ module Sack
   end
 
   require 'sack/version'
-  require 'sack/request_queue'
+  require 'sack/error'
 end
