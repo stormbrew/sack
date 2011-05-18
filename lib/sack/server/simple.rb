@@ -31,42 +31,47 @@ module Sack
         end
 
         def headers(status, headers)
-          match = %r{^([0-9]{3,3})( +([[:graph:] ]+))?}.match(status.to_s)
-          code = match[1].to_i
-          @client.write("HTTP/1.0 #{match[1]} #{match[3] || Rack::Utils::HTTP_STATUS_CODES[code] || "Unknown"}\r\n")
-          
-          headers["Connection"] = "close"
-          headers.delete("Transfer-Encoding")
-          headers.each do |key, vals|
-            vals.each_line do |val|
-              @client.write("#{key}: #{val}\r\n")
+          begin
+            match = %r{^([0-9]{3,3})( +([[:graph:] ]+))?}.match(status.to_s)
+            code = match[1].to_i
+            @client.write("HTTP/1.0 #{match[1]} #{match[3] || Rack::Utils::HTTP_STATUS_CODES[code] || "Unknown"}\r\n")
+            
+            headers["Connection"] = "close"
+            headers.delete("Transfer-Encoding")
+            headers.each do |key, vals|
+              vals.each_line do |val|
+                @client.write("#{key}: #{val}\r\n")
+              end
             end
+
+            @client.write("\r\n")
+
+            return Body.new(self, @client)
+          rescue Errno::EPIPE => e
+            raise Sack::ClosedError.new(self, e)
           end
-
-          @client.write("\r\n")
-
-          return Body.new(@client)
         end
 
         class Body
-          def initialize(client)
+          def initialize(req, client)
             @done = false
+            @req = req
             @client = client
           end
 
           def <<(data)
             begin
-              raise "Write to closed connection" if @done
+              raise Sack::ClosedError.new(@req, nil) if @done
               @client.write(data)
-            rescue
+            rescue Errno::EPIPE => e
               @done = true
-              raise # mark as done and let the blowup propagate.
+              raise Sack::ClosedError.new(@req, e)
             end
           end
 
           def done()
             @done = true
-            @client.close_write
+            @client.close
           end
 
           def open?()
