@@ -1,10 +1,11 @@
 # Simple web chat server
 
 require 'sack'
+require 'sack/connection_list'
 require 'rack/request'
 host = 'localhost'
 server = Sack.server('simple').new(:Host=>host, :Port =>1025)
-chat_clients = []
+chat_clients = Sack::ConnectionList.new
 
 Page = <<DOC
 <html>
@@ -61,19 +62,9 @@ Thread.new do
         text = rack_req.params["text"]
 
         req.headers(200, "Content-Type" => "text/html").done
-        closed = []
         chat_clients.each do |client|
-          if (client.open?)
-            begin
-              client << "data: #{name}\ndata: #{text}\n\n"
-            rescue
-              closed << client
-            end
-          else
-            closed << client
-          end
+          client << "data: #{name}\ndata: #{text}\n\n"
         end
-        closed.each {|c| chat_clients.delete(c) }
       elsif (req.env["REQUEST_URI"] == "/stream")
         body = req.headers(200, "Content-Type" => "text/event-stream")
         body << "retry: 1\n"

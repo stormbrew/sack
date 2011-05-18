@@ -1,3 +1,5 @@
+require 'sack/connection_list'
+
 module Sack
   module Middleware
     class LogUrl
@@ -43,7 +45,7 @@ module Sack
       def initialize(parent, url)
         @parent = parent
         @url = url
-        @log_reqs = []
+        @log_reqs = Sack::ConnectionList.new
       end
 
       def wait
