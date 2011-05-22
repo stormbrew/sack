@@ -17,8 +17,9 @@ existing middleware, though it does this by defining a whole new contract
 rather than working with the existing one.
 
 It is also compatible with rack in both directions. It is trivially possible
-to adapt a conventional rack application into this framework, and the 
-only current implementation of a server is in fact a rack server.
+to adapt a conventional rack application into this framework, and a rack
+server with some extensions (a little more than the thin async.callback
+extension) would be capable of acting as a baseline for this.
 
 Contracts
 =========
@@ -35,7 +36,8 @@ A Sack Server is any object that responds to the following methods as defined:
   runs the server in the current thread, making requests available as described
   below in obj#wait.
 * obj#wait
-  waits for a request to come in and then returns it.
+  waits for a request to come in and then returns it. Returns nil if the
+  request stream has been closed and there are no more requests to handle.
 * obj#stop
   stops the server gracefully, allowing all requests currently in operation to
   complete if possible while no longer accepting further connections. It may 
@@ -86,3 +88,15 @@ not modify the behaviour of these methods:
   Should be false if done has been called or the connection has been closed by
   the client.
 
+Application Contract
+--------------------
+A sack application pulls requests off the server and middleware and handles requests.
+It is expected to be a simple object, and should be re-entrant. It is required
+only to provide one method and an initializer:
+
+* app#initialize(*args)
+  Creates the app object with the arguments given. May take any number of arguments.
+* app#run(server)
+  Given the server (and potentially middleware) given, fetches and handles requests.
+  When server#wait returns nil, it should clean up and return. The #run method should
+  be re-entrant as it may be called as part of a thread pool.
