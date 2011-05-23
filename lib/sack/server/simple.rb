@@ -11,45 +11,17 @@ module Sack
       class Request
         attr_reader :env
 
-        def initialize(client, rack_env)
+        def initialize(client, rack_env, buffer, parser)
           @client = client
           @env = rack_env
-          @buffer = ""
-          @parser = Http::Parser.new
-          
-          while ((data = @client.recv(4096)) && data != "")
-            @buffer << data
-            @parser.parse!(data)
-            if (@parser.done?) # later make this #done_headers? and only fetch the rest when asked.
-              @parser.fill_rack_env(@env)
-              @env["SERVER_PROTOCOL"] = "HTTP/" << @parser.version.join('.')
-              return
-            end
-          end
-          client.close
-          raise "Request had no data."
+          @buffer = buffer
+          @parser = parser
+          @body = Body.new(self, client)
         end
 
         def headers(status, headers)
-          begin
-            match = %r{^([0-9]{3,3})( +([[:graph:] ]+))?}.match(status.to_s)
-            code = match[1].to_i
-            @client.write("HTTP/1.0 #{match[1]} #{match[3] || Rack::Utils::HTTP_STATUS_CODES[code] || "Unknown"}\r\n")
-            
-            headers["Connection"] = "close"
-            headers.delete("Transfer-Encoding")
-            headers.each do |key, vals|
-              vals.each_line do |val|
-                @client.write("#{key}: #{val}\r\n")
-              end
-            end
-
-            @client.write("\r\n")
-
-            return Body.new(self, @client)
-          rescue Errno::EPIPE => e
-            raise Sack::ClosedError.new(self, e)
-          end
+          @body.headers(status, headers)
+          return @body
         end
 
         class Body
@@ -59,19 +31,51 @@ module Sack
             @client = client
           end
 
+          def headers(status, headers)
+            begin
+              match = %r{^([0-9]{3,3})( +([[:graph:] ]+))?}.match(status.to_s)
+              code = match[1].to_i
+              @client.write("HTTP/1.0 #{match[1]} #{match[3] || Rack::Utils::HTTP_STATUS_CODES[code] || "Unknown"}\r\n")
+              
+              headers["Connection"] = "close"
+              headers.delete("Transfer-Encoding")
+              headers.each do |key, vals|
+                vals.each_line do |val|
+                  @client.write("#{key}: #{val}\r\n")
+                end
+              end
+
+              @client.write("\r\n")
+            rescue Errno::EPIPE, Errno::ECONNRESET, IOError => e
+              done
+              raise Sack::ClosedError.new(@req, e)
+            end
+          end
+
+
           def <<(data)
             begin
               raise Sack::ClosedError.new(@req, nil) if @done
               @client.write(data)
-            rescue Errno::EPIPE => e
-              @done = true
+            rescue Errno::EPIPE, Errno::ECONNRESET, IOError => e
+              done
               raise Sack::ClosedError.new(@req, e)
             end
           end
 
           def done()
-            @done = true
-            @client.close
+            if (!@done || @client)
+              begin
+                @client.close_write
+                while (@client.recv(4096) != ""); end # finish out data
+              rescue Errno::EPIPE, Errno::ECONNRESET, IOError => e
+                # ignore already closed socket.
+              ensure
+                @client.close rescue nil
+                @client = nil
+                @done = true
+              end
+            end
           end
 
           def open?()
@@ -106,28 +110,44 @@ module Sack
         @server.listen(1024)
         @stopper_mutex = Mutex.new
         @stopper_cond = ConditionVariable.new
+        @accept_mutex = Mutex.new
       end
 
       def start()
+        puts("Sack Reference Server listening on #{@options[:Host]}:#{@options[:Port]}")
         @stopper_mutex.synchronize do
           @stopper_cond.wait(@stopper_mutex)
         end
       end
 
       def wait()
-        client = @server.accept()
+        loop do
+          client = @accept_mutex.synchronize { @server.accept() }
 
-        rack_env = DefaultRackEnv.dup
-        rack_env["SERVER_PORT"] ||= @options[:Port].to_s
-        rack_env["rack.input"] ||= StringIO.new
-        if (rack_env["rack.input"].respond_to? :set_encoding)
-          rack_env["rack.input"].set_encoding "ASCII-8BIT"
+          rack_env = DefaultRackEnv.dup
+          rack_env["SERVER_PORT"] ||= @options[:Port].to_s
+          rack_env["rack.input"] ||= StringIO.new
+          if (rack_env["rack.input"].respond_to? :set_encoding)
+            rack_env["rack.input"].set_encoding "ASCII-8BIT"
+          end
+          
+          rack_env["REMOTE_PORT"], rack_env["REMOTE_ADDR"] = Socket::unpack_sockaddr_in(client.getpeername)
+          rack_env["REMOTE_PORT"] &&= rack_env["REMOTE_PORT"].to_s
+          
+          buffer = ""
+          parser = Http::Parser.new
+          
+          while ((data = client.recv(4096)) && data != "")
+            buffer << data
+            parser.parse!(data)
+            if (parser.done?) # later make this #done_headers? and only fetch the rest when asked.
+              parser.fill_rack_env(rack_env)
+              return Request.new(client, rack_env, buffer, parser)
+            end
+          end
+          # connection closed on other end without a full request.
+          client.close
         end
-        
-        rack_env["REMOTE_PORT"], rack_env["REMOTE_ADDR"] = Socket::unpack_sockaddr_in(client.getpeername)
-        rack_env["REMOTE_PORT"] &&= rack_env["REMOTE_PORT"].to_s
-        
-        return Request.new(client, rack_env)
       end
 
       def stop()
