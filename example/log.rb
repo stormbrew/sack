@@ -2,7 +2,7 @@
 
 require 'sack'
 require 'sack/middleware/log_url'
-server = Sack.server('simple').new(:Host=>'localhost', :Port =>1025)
+server = Sack.server('simple').new(:Host=>ARGV[0] || 'localhost', :Port =>1025)
 server = Sack::Middleware::LogUrl.new(server, '/log')
 
 Thread.new do
