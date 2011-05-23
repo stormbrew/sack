@@ -3,7 +3,7 @@
 require 'sack'
 require 'sack/connection_list'
 require 'rack/request'
-host = 'localhost'
+host = ARGV[0] || 'localhost'
 server = Sack.server('simple').new(:Host=>host, :Port =>1025)
 chat_clients = Sack::ConnectionList.new
 
