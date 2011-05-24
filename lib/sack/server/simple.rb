@@ -1,3 +1,5 @@
+require 'socket'
+require 'thread'
 require 'rack/utils'
 require 'http/parser'
 
